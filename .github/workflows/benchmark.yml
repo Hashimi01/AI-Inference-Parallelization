@@ -1,0 +1,46 @@
+name: AI Inference Benchmark
+
+# متى يعمل هذا النظام؟ عند عمل Push أو Pull Request على الفرع الرئيسي
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  run-benchmark:
+    name: Run AI Inference Test
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. سحب الكود من المستودع
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    # 2. إعداد بيئة بايثون 3.9 (نسخة مستقرة للمكتبات العلمية)
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    # 3. تثبيت المكتبات (خدعة تقنية مهمة هنا!)
+    # نقوم بتثبيت نسخة CPU-Only من PyTorch لأن خوادم GitHub لا تملك GPU.
+    # هذا سيجعل التحميل يستغرق دقيقة واحدة بدل 10 دقائق (حجم النسخة العادية ضخم).
+    - name: Install Dependencies (CPU Optimized)
+      run: |
+        python -m pip install --upgrade pip
+        pip install numpy matplotlib
+        pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+    # 4. تشغيل الكود الخاص بك
+    - name: Run Main Script
+      run: python main.py
+
+    # 5. حفظ الرسم البياني الناتج كـ "Artifact" لتتمكن من تحميله
+    - name: Upload Performance Graph
+      if: always() # ينفذ هذه الخطوة حتى لو حدث خطأ بسيط، لضمان استلام أي مخرجات
+      uses: actions/upload-artifact@v4
+      with:
+        name: performance-result-graph
+        path: performance_graph.png
+        retention-days: 5
