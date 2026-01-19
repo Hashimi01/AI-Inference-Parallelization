@@ -1,96 +1,160 @@
-# Rapport de Projet : Parallélisation d'Inférence IA avec PyTorch
+# 🚀 AI Inference Parallelization Project
 
-## 1. Introduction
-Ce document présente les étapes complètes et les résultats d'une expérimentation visant à accélérer les tâches d'inférence d'IA (Deep Learning) sur CPU. Nous documentons ici l'intégralité du processus, de la configuration de l'environnement Linux à l'analyse des performances finales.
+## 📋 نظرة عامة / Overview
 
----
+مشروع لقياس وتحسين أداء عمليات الاستدلال (Inference) في نماذج الذكاء الاصطناعي باستخدام تقنيات التوازي (Parallelization). يقارن المشروع بين التنفيذ المتسلسل (Sequential) والتنفيذ متعدد الخيوط (Multi-threaded) باستخدام نموذج ResNet18.
 
-## 2. Préparation de l'Environnement (Journal de Bord)
-
-Cette section documente les étapes préliminaires nécessaires pour reproduire l'expérience sur une machine virtuelle Ubuntu.
-
-### Étape 1 : Création du Script
-Nous avons commencé par créer le fichier source `main.py` directement dans le terminal.
-![Création du fichier main.py](captur/Capture%20d'écran%202026-01-19%20123107.png)
-
-### Étape 2 : Mise à jour du Système
-Avant toute installation, nous avons mis à jour les dépôts du système pour garantir la compatibilité.
-![Mise à jour apt update](captur/Capture%20d'écran%202026-01-19%20124546.png)
-
-### Étape 3 : Installation des Dépendances Système
-Installation de `pip` (gestionnaire de paquets Python) nécessaire pour installer PyTorch.
-![Installation de pip](captur/Capture%20d'écran%202026-01-19%20124748.png)
-
-### Étape 4 : Installation des Bibliothèques IA
-Installation des bibliothèques scientifiques : `torch` (PyTorch), `torchvision`, `numpy` et `matplotlib`.
-![Installation des librairies Python](captur/Capture%20d'écran%202026-01-19%20135317.png)
+A project to measure and optimize AI model inference performance using parallelization techniques. The project compares sequential execution with multi-threaded execution using ResNet18 model.
 
 ---
 
-## 3. Configuration Matérielle (VirtualBox)
+## 🎯 الهدف من المشروع / Project Objectives
 
-Pour que le parallélisme soit effectif, il est crucial d'allouer plusieurs cœurs virtuels à la machine.
+- **مقارنة الأداء**: مقارنة بين التنفيذ المتسلسل والتنفيذ المتوازي
+- **تحسين الأداء**: استخدام Multi-threading لتسريع عمليات الاستدلال
+- **القياس والتحليل**: توليد رسوم بيانية لمقارنة الأداء
 
-### Configuration Initiale (Avant optimisation)
-Vue des paramètres système avant l'allocation optimale.
-![Configuration Initiale](captur/Capture%20d'écran%202026-01-19%20143229.png)
-
-### Configuration Optimale (8 vCPUs)
-Nous avons alloué **8 processeurs** à la VM pour permettre l'exécution simultanée des threads.
-![Configuration Finale - 8 CPU](captur/Capture%20d'écran%202026-01-19%20152615.png)
+- **Performance Comparison**: Compare sequential vs parallel execution
+- **Performance Optimization**: Use multi-threading to accelerate inference operations
+- **Measurement & Analysis**: Generate performance comparison graphs
 
 ---
 
-## 4. Implémentation Technique
+## 📁 هيكل المشروع / Project Structure
 
-Le script compare deux méthodes d'exécution :
-
-### A. Approche Séquentielle (Code)
-```python
-def approche_sequentielle(modele, data_list):
-    """ Exécution classique : 1 thread """
-    print("\n[PROCESS] Exécution SÉQUENTIELLE (1 thread)...")
-    resultats = []
-    for data in data_list:
-        res = tache_inference(modele, data)
-        resultats.append(res)
-    return resultats
-```
-
-### B. Approche Multi-thread (Code Optimisé)
-```python
-def approche_multithread(modele, data_list, num_threads):
-    """ Parallélisme : 8 threads """
-    # Découpage des données en batches
-    batch_size = len(data_list) // num_threads
-    # ...
-    # Exécution parallèle relâchant le GIL
-    with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
-        futures = [executor.submit(traiter_batch, batch) for batch in batches]
+```text
+AI-Inference-Parallelization/
+├── .github/
+│   └── workflows/
+│       └── benchmark.yml          # GitHub Actions workflow
+├── main.py                        # الكود الرئيسي / Main script
+├── AI-Inference-Parallelization.pdf  # التقرير / Report
+└── README.md                      # هذا الملف / This file
 ```
 
 ---
 
-## 5. Exécution et Résultats
+## 🛠️ المتطلبات / Requirements
 
-### Sortie Terminal
-Le script a été exécuté avec succès, confirmant le chargement du modèle ResNet18 et l'exécution des deux phases de test.
+### المكتبات المطلوبة / Required Libraries
 
-![Sortie Terminal et Résultat](captur/Capture%20d'écran%202026-01-19%20154733.png)
+```bash
+torch>=2.0.0
+torchvision>=0.15.0
+numpy>=1.21.0
+matplotlib>=3.5.0
+```
 
-### Analyse des Performances
-Les résultats finaux pour 100 inférences sont les suivants :
+### تثبيت المتطلبات / Installation
 
-| Méthode | Temps d'exécution | Observations |
-| :--- | :--- | :--- |
-| **Séquentiel** | **141.56 s** | Traitement linéaire lent |
-| **Multi-thread (8 threads)** | **104.47 s** | Traitement parallèle rapide |
-| **Gain (Speedup)** | **1.36x** | Accélération confirmée |
+#### للاستخدام المحلي (مع GPU/CPU قوي) / For Local Use:
 
-### Graphique Final
-Visualisation de la différence de temps d'exécution.
+```bash
+pip install torch torchvision numpy matplotlib
+```
 
-![Graphique de Performance](performance_graph0.png)
+#### للاستخدام على خوادم محدودة (مثل GitHub Actions) / For CPU-only servers:
 
-## 6. Conclusion
-L'expérience valide que l'allocation de ressources matérielles adéquates (8 vCPUs) couplée à une programmation Multi-thread efficace permet d'améliorer significativement les performances d'inférence d'IA, même dans un environnement virtualisé.
+```bash
+pip install numpy matplotlib
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+```
+
+---
+
+## 🚀 الاستخدام / Usage
+
+### تشغيل البرنامج محلياً / Run Locally
+
+```bash
+python main.py
+```
+
+### الإعدادات القابلة للتعديل / Configurable Settings
+
+في ملف `main.py`، يمكنك تعديل المعاملات التالية:
+
+In `main.py`, you can modify the following parameters:
+
+```python
+NOMBRE_INFERENCES = 100      # عدد عمليات الاستدلال / Number of inferences
+NOMBRE_THREADS = 8           # عدد الخيوط المستخدمة / Number of threads
+DIM_INPUT = (1, 3, 224, 224) # أبعاد البيانات المدخلة / Input dimensions
+```
+
+---
+
+## 🔄 GitHub Actions Workflow & Results
+
+المشروع يحتوي على workflow تلقائي يعمل على GitHub Actions عند كل Push أو Pull Request.
+
+The project includes an automated workflow that runs on GitHub Actions on every Push or Pull Request.
+
+### ⚠️ تحليل الأداء في بيئة CI/CD / Performance Analysis on CI/CD
+
+🛑 **ملاحظة مهمة حول النتائج في GitHub Actions**: قد تلاحظ أن الفرق في السرعة بين التنفيذ المتسلسل والمتوازي ضئيل جداً (أو معدوم) في تقرير GitHub Actions.
+
+**السبب التقني**: خوادم GitHub Actions المجانية تعمل بـ 2 vCPUs فقط. عندما نحاول تشغيل 8 Threads، يضطر المعالج لقضاء وقت طويل في التبديل بين المهام (Context Switching)، مما يستهلك الموارد ويلغي فائدة التوازي.
+
+**الخلاصة**: التوازي يظهر كفاءته الحقيقية على الأجهزة المحلية (Local Machines) التي تحتوي على عدد أنوية أكبر (4+ Cores).
+
+🛑 **Important Note on GitHub Actions Results**: You might notice minimal speedup differences in the GitHub Actions report.
+
+**Technical Explanation**: Free GitHub Actions runners are strictly limited to 2 vCPUs. Launching 8 Threads on a dual-core system forces excessive Context Switching, creating overhead that negates parallelization benefits.
+
+**Conclusion**: Parallelization efficiency is best demonstrated on local machines with higher core counts (4+ Cores).
+
+---
+
+## 📊 المخرجات / Outputs
+
+بعد تشغيل البرنامج، ستحصل على:
+
+After running the script, you will get:
+
+1. **رسالة في وحدة التحكم** / **Console Output**:
+   - وقت التنفيذ المتسلسل / Sequential execution time
+   - وقت التنفيذ المتوازي / Parallel execution time
+   - نسبة التسريع (Speedup) / Speedup ratio
+
+2. **رسم بياني** / **Performance Graph**:
+   - ملف `performance_graph.png` يتم توليده تلقائياً.
+   - A `performance_graph.png` file is automatically generated.
+
+---
+
+## 📚 الوثائق / Documentation
+
+للحصول على تفاصيل أكثر حول المشروع، والنتائج النظرية، راجع ملف التقرير المرفق:
+
+For more details about the project and theoretical results, see the attached PDF:
+
+📄 [AI-Inference-Parallelization.pdf](AI-Inference-Parallelization.pdf)
+
+---
+
+## 🔧 التقنيات المستخدمة / Technologies Used
+
+- **PyTorch**: للتعلم العميق وإدارة النماذج / Deep Learning & Model Management
+- **ResNet18**: نموذج التصنيف المدرب مسبقاً / Pre-trained Classification Model
+- **ThreadPoolExecutor**: لإدارة التوازي / For Parallel Execution
+- **Matplotlib**: لتصوير البيانات / For Data Visualization
+
+---
+
+## 👥 فريق العمل / Authors
+
+- **Amanetoullah** (C22643)
+- **Hashimi** (C21454)
+
+---
+
+## 📝 الترخيص / License
+
+هذا المشروع متاح للاستخدام التعليمي والبحثي.
+
+This project is available for educational and research purposes.
+
+---
+
+**⭐ إذا أعجبك المشروع، لا تنسى إضافة نجمة! / If you like this project, don't forget to add a star! ⭐**
