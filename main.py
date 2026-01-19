@@ -36,12 +36,14 @@ def init_worker():
         print(f"[ERREUR] Échec de l'initialisation du worker : {e}")
         exit(1)
 
-def tache_inference(data):
+def tache_inference_batch(data_batch):
     """
-    Exécute l'inférence sur une seule donnée en utilisant le modèle global du processus.
+    Exécute l'inférence sur un BATCH de données (au lieu d'une seule).
+    CRITIQUE : Réduire le nombre de transferts inter-processus en traitant par lots.
     """
     global model_worker
-    return model_worker(data)
+    # Traite chaque élément du batch
+    return [model_worker(data) for data in data_batch]
 
 def approche_sequentielle(data_list):
     """
@@ -63,19 +65,32 @@ def approche_sequentielle(data_list):
 
 def approche_multiprocess_optimisee(data_list, num_workers):
     """
-    Version optimisée utilisant 'initializer' pour charger le modèle une seule fois par processus.
-    C'est la méthode la plus efficace pour contourner le GIL en Deep Learning.
+    Version ULTRA-OPTIMISÉE utilisant le traitement par BATCH.
+    Au lieu d'envoyer 100 tâches individuelles (overhead énorme), on divise en 8 lots.
+    Cela réduit drastiquement le coût de communication inter-processus.
     """
     print(f"\n[PROCESS] Début du parallélisme optimisé ({num_workers} processus)...")
     start_time = time.perf_counter()
+    
+    # Division intelligente des données en batches (un par worker)
+    batch_size = len(data_list) // num_workers
+    batches = []
+    
+    for i in range(num_workers):
+        start_idx = i * batch_size
+        # Le dernier batch prend tous les éléments restants
+        if i == num_workers - 1:
+            batches.append(data_list[start_idx:])
+        else:
+            batches.append(data_list[start_idx:start_idx + batch_size])
 
     # ProcessPoolExecutor avec initializer : charge le modèle AVANT de traiter les tâches
     with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers, initializer=init_worker) as executor:
-        # Nous ne passons QUE les données, pas le modèle (qui est déjà en mémoire via init_worker)
-        futures = [executor.submit(tache_inference, data) for data in data_list]
+        # On passe des BATCHES entiers, pas des éléments individuels (réduction majeure de l'overhead)
+        futures = [executor.submit(tache_inference_batch, batch) for batch in batches]
         
         # Attente et récupération des résultats
-        _ = [f.result() for f in concurrent.futures.as_completed(futures)]
+        resultats = [f.result() for f in concurrent.futures.as_completed(futures)]
 
     end_time = time.perf_counter()
     return end_time - start_time
