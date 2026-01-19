@@ -1,120 +1,87 @@
 import torch
 import torchvision.models as models
 import time
-import concurrent.futures
 import matplotlib.pyplot as plt
 import os
 
 # --- Configuration du Projet ---
-# IMPORTANT : Assurez-vous d'avoir alloué suffisamment de cœurs (ex: 8) à votre environnement
 NOMBRE_INFERENCES = 100
-NOMBRE_PROCESSUS = 8 
-DIM_INPUT = (1, 3, 224, 224)
+DIM_INPUT = (3, 224, 224)  # Sans batch dimension
+BATCH_SIZES = [1, 10, 25, 50, 100]  # Différentes tailles de batch à tester
 
-# Variable globale pour stocker le modèle dans chaque processus (évite la sérialisation inutile)
-model_worker = None
-
-def init_worker():
+def charger_modele():
     """
-    Fonction d'initialisation exécutée une fois au démarrage de chaque processus.
-    Charge le modèle en mémoire locale du processus pour éviter le surcoût de transfert (Pickling).
+    Charge le modèle ResNet18 pré-entraîné.
+    PyTorch utilise automatiquement le multithreading interne pour les opérations matricielles.
     """
-    global model_worker
-    
-    # INDISPENSABLE : Empêche PyTorch d'utiliser le multithreading interne,
-    # ce qui entrerait en conflit avec notre multiprocessing et réduirait les performances.
-    torch.set_num_threads(1)
-    
     try:
-        # Chargement du modèle (poids par défaut)
+        print("[INFO] Chargement du modèle ResNet18 pré-entraîné...")
         model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
         model.eval()
-        # Désactivation des gradients pour l'inférence seule
         torch.set_grad_enabled(False)
-        model_worker = model
+        
+        # Permettre à PyTorch d'utiliser tous les cœurs disponibles
+        num_threads = torch.get_num_threads()
+        print(f"[INFO] PyTorch utilise {num_threads} threads pour les opérations.")
+        
+        return model
     except Exception as e:
-        print(f"[ERREUR] Échec de l'initialisation du worker : {e}")
+        print(f"[ERREUR] Lors du chargement du modèle : {e}")
         exit(1)
 
-def tache_inference_batch(data_batch):
+def approche_sequentielle(modele, data_list):
     """
-    Exécute l'inférence sur un BATCH de données (au lieu d'une seule).
-    CRITIQUE : Réduire le nombre de transferts inter-processus en traitant par lots.
+    Traitement séquentiel : une image à la fois (baseline lent).
     """
-    global model_worker
-    # Traite chaque élément du batch
-    return [model_worker(data) for data in data_batch]
-
-def approche_sequentielle(data_list):
-    """
-    Exécution séquentielle classique pour servir de référence (baseline).
-    """
-    print("\n[PROCESS] Début de l'exécution séquentielle...")
-    
-    # Chargement d'un modèle local pour le test séquentiel
-    model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
-    model.eval()
-    torch.set_grad_enabled(False)
-    
+    print("\n[PROCESS] Approche Séquentielle (1 image à la fois)...")
     start_time = time.perf_counter()
     
-    _ = [model(data) for data in data_list]
+    _ = [modele(data.unsqueeze(0)) for data in data_list]  # unsqueeze pour ajouter batch dim
     
     end_time = time.perf_counter()
     return end_time - start_time
 
-def approche_multiprocess_optimisee(data_list, num_workers):
+def approche_batch(modele, data_list, batch_size):
     """
-    Version ULTRA-OPTIMISÉE utilisant le traitement par BATCH.
-    Au lieu d'envoyer 100 tâches individuelles (overhead énorme), on divise en 8 lots.
-    Cela réduit drastiquement le coût de communication inter-processus.
+    Traitement par BATCH : grouper les images et les traiter ensemble.
+    C'est LA méthode optimale pour l'inférence sur CPU/GPU.
+    PyTorch parallélise automatiquement les calculs matriciels sur plusieurs cœurs.
     """
-    print(f"\n[PROCESS] Début du parallélisme optimisé ({num_workers} processus)...")
+    print(f"\n[PROCESS] Approche Batch (batch_size={batch_size})...")
     start_time = time.perf_counter()
     
-    # Division intelligente des données en batches (un par worker)
-    batch_size = len(data_list) // num_workers
-    batches = []
+    # Créer les batches
+    for i in range(0, len(data_list), batch_size):
+        batch = torch.stack(data_list[i:i + batch_size])  # Combine en un seul tenseur
+        _ = modele(batch)  # Inférence sur tout le batch en une fois
     
-    for i in range(num_workers):
-        start_idx = i * batch_size
-        # Le dernier batch prend tous les éléments restants
-        if i == num_workers - 1:
-            batches.append(data_list[start_idx:])
-        else:
-            batches.append(data_list[start_idx:start_idx + batch_size])
-
-    # ProcessPoolExecutor avec initializer : charge le modèle AVANT de traiter les tâches
-    with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers, initializer=init_worker) as executor:
-        # On passe des BATCHES entiers, pas des éléments individuels (réduction majeure de l'overhead)
-        futures = [executor.submit(tache_inference_batch, batch) for batch in batches]
-        
-        # Attente et récupération des résultats
-        resultats = [f.result() for f in concurrent.futures.as_completed(futures)]
-
     end_time = time.perf_counter()
     return end_time - start_time
 
-def generer_graphique(temps_seq, temps_mp):
+def generer_graphique(resultats):
     """
-    Génère un histogramme comparatif des temps d'exécution.
+    Génère un histogramme comparatif des performances.
     """
-    labels = ['Séquentiel', f'Multiprocess ({NOMBRE_PROCESSUS} cœurs)']
-    temps = [temps_seq, temps_mp]
+    labels = list(resultats.keys())
+    temps = list(resultats.values())
     
-    plt.figure(figsize=(10, 6))
-    bars = plt.bar(labels, temps, color=['#e74c3c', '#2ecc71'])
+    # Couleurs : rouge pour séquentiel, dégradé de vert pour les batches
+    colors = ['#e74c3c'] + ['#2ecc71', '#27ae60', '#1abc9c', '#16a085'][:len(labels)-1]
+    
+    plt.figure(figsize=(12, 6))
+    bars = plt.bar(labels, temps, color=colors)
     
     plt.ylabel('Temps d\'exécution (secondes)')
-    plt.title('Comparaison de Performance : Séquentiel vs Multiprocessing Optimisé')
+    plt.xlabel('Méthode')
+    plt.title('Performance : Séquentiel vs Batched Inference (Vraie Optimisation)')
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     
     for bar in bars:
         yval = bar.get_height()
         plt.text(bar.get_x() + bar.get_width()/2, yval + 0.01, f'{yval:.4f}s', 
-                 ha='center', va='bottom', fontweight='bold')
+                 ha='center', va='bottom', fontweight='bold', fontsize=9)
     
-    # Logique pour le nommage incrémental
+    # Nommage incrémental
     base_name = 'performance_graph'
     extension = '.png'
     counter = 0
@@ -124,42 +91,57 @@ def generer_graphique(temps_seq, temps_mp):
         counter += 1
         nom_fichier = f"{base_name}_{counter}{extension}"
 
+    plt.tight_layout()
     plt.savefig(nom_fichier)
     print(f"\n[INFO] Graphique sauvegardé : {nom_fichier}")
 
 def main():
     print("="*60)
-    print("SYSTÈME D'INFÉRENCE PARALLÈLE : OPTIMISATION MAXIMALE")
+    print("OPTIMISATION D'INFÉRENCE : BATCHED INFERENCE")
     print("="*60)
+    print("\nNOTE : Multiprocessing n'est PAS optimal pour cette tâche.")
+    print("       PyTorch utilise le multithreading interne pour les calculs matriciels.")
+    print("       La vraie optimisation est le BATCHING des données.\n")
 
-    # 1. Préparation des données (Simulation)
-    print(f"[INFO] Génération de {NOMBRE_INFERENCES} entrées factices...")
+    # 1. Préparation
+    modele = charger_modele()
+    print(f"[INFO] Génération de {NOMBRE_INFERENCES} images factices...")
     donnees = [torch.randn(*DIM_INPUT) for _ in range(NOMBRE_INFERENCES)]
 
-    # 2. Test Séquentiel
-    t_seq = approche_sequentielle(donnees)
+    resultats = {}
+
+    # 2. Test Séquentiel (baseline)
+    t_seq = approche_sequentielle(modele, donnees)
+    resultats['Séquentiel\n(batch=1)'] = t_seq
     print(f"[OK] Séquentiel terminé en : {t_seq:.4f}s")
 
-    # 3. Test Multiprocess Optimisé
-    t_mp = approche_multiprocess_optimisee(donnees, NOMBRE_PROCESSUS)
-    print(f"[OK] Multiprocess Optimisé terminé en : {t_mp:.4f}s")
+    # 3. Tests avec différentes tailles de batch
+    for batch_size in BATCH_SIZES[1:]:  # Skip batch_size=1 (c'est le séquentiel)
+        t_batch = approche_batch(modele, donnees, batch_size)
+        resultats[f'Batch\n(size={batch_size})'] = t_batch
+        print(f"[OK] Batch size={batch_size} terminé en : {t_batch:.4f}s")
 
-    # 4. Analyse des gains
-    if t_mp > 0:
-        speedup = t_seq / t_mp
-        print("\n" + "="*30)
-        print(f"ANALYSE : Speedup de {speedup:.2f}x")
-        
-        if speedup > 1.5:
-            print("RÉSULTAT : Excellente accélération. L'optimisation est réussie.")
-        else:
-            print("ATTENTION : Gain modéré. Vérifiez le nombre de cœurs physiques disponibles.")
+    # 4. Analyse
+    print("\n" + "="*50)
+    print("RÉSUMÉ DES PERFORMANCES")
+    print("="*50)
+    
+    t_best = min(resultats.values())
+    best_method = [k for k, v in resultats.items() if v == t_best][0]
+    speedup = t_seq / t_best
+    
+    print(f"Temps Séquentiel     : {t_seq:.4f}s")
+    print(f"Meilleur temps       : {t_best:.4f}s ({best_method.replace(chr(10), ' ')})")
+    print(f"Accélération (Speedup): {speedup:.2f}x")
+    
+    if speedup > 1.5:
+        print("\n✅ SUCCÈS : Le batching offre une accélération significative!")
     else:
-        print("[ERREUR] Temps d'exécution nul.")
+        print("\n⚠️  Le gain est modéré. C'est normal pour les petits modèles sur CPU.")
 
     # 5. Visualisation
-    generer_graphique(t_seq, t_mp)
+    generer_graphique(resultats)
+    print("\n[FIN] Analyse terminée.")
 
 if __name__ == "__main__":
-    # Protection nécessaire pour Windows/Linux lors de la création de sous-processus
     main()
