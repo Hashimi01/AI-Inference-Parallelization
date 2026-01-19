@@ -99,7 +99,16 @@ def generer_graphique(temps_seq, temps_mp):
         plt.text(bar.get_x() + bar.get_width()/2, yval + 0.01, f'{yval:.4f}s', 
                  ha='center', va='bottom', fontweight='bold')
     
-    nom_fichier = 'performance_optimized.png'
+    # Logique pour le nommage incrémental
+    base_name = 'performance_graph'
+    extension = '.png'
+    counter = 0
+    nom_fichier = f"{base_name}{extension}"
+    
+    while os.path.exists(nom_fichier):
+        counter += 1
+        nom_fichier = f"{base_name}_{counter}{extension}"
+
     plt.savefig(nom_fichier)
     print(f"\n[INFO] Graphique sauvegardé : {nom_fichier}")
 
