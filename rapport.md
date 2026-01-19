@@ -90,7 +90,7 @@ Les résultats finaux pour 100 inférences sont les suivants :
 ### Graphique Final
 Visualisation de la différence de temps d'exécution.
 
-![Graphique de Performance](performance_graph.png)
+![Graphique de Performance](performance_graph0.png)
 
 ## 6. Conclusion
 L'expérience valide que l'allocation de ressources matérielles adéquates (8 vCPUs) couplée à une programmation Multi-thread efficace permet d'améliorer significativement les performances d'inférence d'IA, même dans un environnement virtualisé.
