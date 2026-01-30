@@ -1,4 +1,5 @@
 import torch
+torch.set_num_threads(1)
 import torchvision.models as models
 import time
 import concurrent.futures
